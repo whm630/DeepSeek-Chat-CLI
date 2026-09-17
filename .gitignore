@@ -1,0 +1,7 @@
+*.o
+deepseek
+deepseek-config
+core
+core.*
+.vscode/
+.idea/
