@@ -310,7 +310,7 @@ $>file <path>
 例如：
 
 ```text
-$>file main.c
+$>file /home/user/main.c
 ```
 
 程序会读取文件内容并将其加入当前对话上下文，然后发送给 DeepSeek。
@@ -318,9 +318,9 @@ $>file main.c
 例如可以用于：
 
 ```text
-$>file main.c
-$>file README.md
-$>file test.cpp
+$>file /home/user/main.c
+$>file /home/userREADME.md
+$>file /home/user/test.cpp
 ```
 
 当前实现主要用于文本文件。
