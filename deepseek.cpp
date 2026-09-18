@@ -541,9 +541,9 @@ static std::string solve_show()
         reasoning = cJSON_GetObjectItem(rcv,"reasoning_content");
         rcv = cJSON_GetObjectItem(rcv,"content");
         if (cJSON_IsString(reasoning) && reasoning->valuestring)
-                std::cout << "思考过程:\n" << reasoning->valuestring << std::endl;
+                std::cout << "\033[31m思考过程:\033[0m\n" << reasoning->valuestring << std::endl;
         if (cJSON_IsString(rcv) && rcv->valuestring){
-                std::cout << "回答:\n" << rcv->valuestring << std::endl;
+                std::cout << "\033[31m回答:\033[0m\n" << rcv->valuestring << std::endl;
                 str = rcv->valuestring;
         }else
                 std::cout << "\033[31m解析json失败\n\033[0m";
