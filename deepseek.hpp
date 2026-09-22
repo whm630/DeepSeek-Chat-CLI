@@ -14,6 +14,7 @@ private:
         struct curl_slist* head;
         std::string api_key;
 public:
+        class response* response_data;
         NetWork();
         int send(const std::string& model,
                 const std::string& thinking_type,
