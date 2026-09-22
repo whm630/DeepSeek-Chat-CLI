@@ -381,6 +381,8 @@ void Memory::new_conversation(const std::string& system_messages,
         char* new_messages_str;
         std::string temp;
 
+        if (key_word.empty())
+                return;
         for (std::unique_ptr<Conversation>& i : this->all_conversation){
                 if (i->compare_key_word(key_word)){
                         std::cout << "\033[31m关键字冲突！\033[0m" << std::endl;
@@ -388,7 +390,10 @@ void Memory::new_conversation(const std::string& system_messages,
                 }
         }
         cJSON_AddStringToObject(new_msg,"role","system");
-        cJSON_AddStringToObject(new_msg,"content",system_messages.c_str());
+        if (system_messages.empty())
+                cJSON_AddStringToObject(new_msg,"content","你是一个乐于助人的助手");
+        else
+                cJSON_AddStringToObject(new_msg,"content",system_messages.c_str());
         cJSON_AddItemToArray(new_message_arr,new_msg);
         new_messages_str = cJSON_Print(new_message_arr);
         temp = new_messages_str;
@@ -403,6 +408,8 @@ void Memory::del_conversation(const std::string& key_word)
 {
         int index = 0;
 
+        if (key_word.empty())
+                return;
         for (std::unique_ptr<Conversation>& i : this->all_conversation){
                 if (i->compare_key_word(key_word)){
                         if (index == this->current_conversation){
@@ -424,6 +431,8 @@ void Memory::switch_conversation(const std::string& key_word)
 {
         int index = 0;
 
+        if (key_word.empty())
+                return;
         for (std::unique_ptr<Conversation>& i : this->all_conversation){
                 if (i->compare_key_word(key_word)){
                         this->current_conversation = index;
@@ -464,7 +473,9 @@ void Memory::print_all_key_word()
 
         for (std::unique_ptr<Conversation>& i : this->all_conversation){
                 temp = i->get_key_word();
-                std::cout << index << ":" << temp << std::endl;
+                printf("%c[%d]:%s\n",(index - 1 == this->current_conversation) ? '*' : ' ',
+                                index,
+                                i->get_key_word().c_str());
                 index++;
         }
 }
@@ -508,7 +519,7 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
         }else if (input == "$>del"){
                 std::string temp;
                 ds.memory.print_all_key_word();
-                buffer = ic_readline("输入关键字>");
+                buffer = ic_readline("输入关键字(空行以取消)>");
                 temp = buffer;
                 free(buffer);
                 ds.memory.del_conversation(temp);
@@ -516,10 +527,10 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
         }else if (input == "$>new"){
                 std::string key_word;
                 std::string system_message;
-                buffer = ic_readline("请输入新对话的关键字>");
+                buffer = ic_readline("请输入新对话的关键字(空行以取消)>");
                 key_word = buffer;
                 free(buffer);
-                buffer = ic_readline("请输入新对话中DeepSeek的设定>");
+                buffer = ic_readline("请输入新对话中DeepSeek的设定(空行以使用默认设定)>");
                 system_message = buffer;
                 free(buffer);
                 ds.memory.new_conversation(system_message,key_word);
@@ -527,7 +538,7 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
         }else if (input == "$>switch"){
                 std::string key_word;
                 ds.memory.print_all_key_word();
-                buffer = ic_readline("请输入关键字>");
+                buffer = ic_readline("请输入关键字(空行以取消)>");
                 key_word = buffer;
                 free(buffer);
                 ds.memory.switch_conversation(key_word);
@@ -595,11 +606,14 @@ DeepSeek::DeepSeek()
         cJSON_Delete(config_json);
         std::cout << "当前模型: " << this->model << std::endl;
         std::cout << "思考模式: " << ((this->thinking_type == "enabled")?"开":"关") << std::endl;
+        std::cout << "输入'$>help'了解更多命令！" << std::endl;
         this->memory.print_history();
 }
 
 void DeepSeek::input(const std::string& str)
 {
+        if (str.empty())
+                return;
         this->parse.parse_and_run(*this,str);
 }
 
