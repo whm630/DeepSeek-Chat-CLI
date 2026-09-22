@@ -16,8 +16,77 @@
 #define DEEPSEEK_HISTORY "/.deepseek/history"
 #define DEEPSEEK_LOCK "/.deepseek/lock"
 
-std::string rcv_buffer;
-static std::string solve_show();
+class response
+{
+private:
+    std::string str;
+
+    void parse_event(const std::string& event)
+    {
+        if (event.size() < 6)
+            return;
+        if (event.compare(0, 6, "data: ") != 0)
+            return;
+        const char* data = event.c_str() + 6;
+        if (strcmp(data, "[DONE]") == 0)
+            return;
+        cJSON* json = cJSON_Parse(data);
+        if (!json)
+            return;
+        cJSON* choices =
+            cJSON_GetObjectItem(json, "choices");
+        cJSON* choice =
+            cJSON_GetArrayItem(choices, 0);
+        cJSON* delta =
+            cJSON_GetObjectItem(choice, "delta");
+        cJSON* reasoning =
+            cJSON_GetObjectItem(delta, "reasoning_content");
+        cJSON* content =
+            cJSON_GetObjectItem(delta, "content");
+        if (cJSON_IsString(reasoning) &&
+            reasoning->valuestring &&
+            reasoning->valuestring[0] != '\0'){
+            std::cout << reasoning->valuestring;
+        }
+
+        if (cJSON_IsString(content) &&
+            content->valuestring &&
+            content->valuestring[0] != '\0'){
+            if (answer.empty())
+                std::cout << "\n\033[31m回答:\033[0m\n";
+
+            std::cout << content->valuestring;
+            answer.append(content->valuestring);
+        }
+        std::cout.flush();
+        cJSON_Delete(json);
+    }
+
+    void show()
+    {
+        size_t pos;
+
+        while ((pos = str.find("\n\n")) != std::string::npos) {
+            std::string event = str.substr(0, pos);
+            str.erase(0, pos + 2);
+            parse_event(event);
+        }
+    }
+
+public:
+    std::string answer;
+
+    response()
+    {
+    }
+
+    void append(const char* data, size_t len)
+    {
+        str.append(data, len);
+        show();
+    }
+};
+
 static std::string read_file(const char* file_path);
 static size_t call_back(char* data,size_t n,size_t size,void* usr);
 
@@ -108,6 +177,7 @@ NetWork::NetWork()
         size_t f_size;
         std::string http_author_head = "Authorization: Bearer ";
 
+        response_data = new response();
         curl_global_init(CURL_GLOBAL_ALL);
         config_path += DEEPSEEK_CONFIG;
         this->head = NULL;
@@ -131,7 +201,7 @@ NetWork::NetWork()
         curl_easy_setopt(this->curl,CURLOPT_URL,DEEPSEEK_URL);
         curl_easy_setopt(this->curl,CURLOPT_HTTPHEADER,this->head);
         curl_easy_setopt(this->curl,CURLOPT_WRITEFUNCTION,call_back);
-        curl_easy_setopt(this->curl,CURLOPT_WRITEDATA,&rcv_buffer);
+        curl_easy_setopt(this->curl,CURLOPT_WRITEDATA,response_data);
         //curl_easy_setopt(this->curl,CURLOPT_VERBOSE,1L);
         fclose(fp);
         delete[] buffer;
@@ -151,7 +221,7 @@ int NetWork::send(const std::string& model,
         cJSON_AddStringToObject(thinking,"type",thinking_type.c_str());
         cJSON_AddItemToObject(send_json,"thinking",thinking);
         cJSON_AddItemToObject(send_json,"messages",cJSON_Parse(message.c_str()));
-        cJSON_AddBoolToObject(send_json,"stream",0);
+        cJSON_AddBoolToObject(send_json,"stream",1);
         send_str = cJSON_Print(send_json);
         curl_easy_setopt(this->curl,CURLOPT_POSTFIELDS,send_str);
         code = curl_easy_perform(this->curl);
@@ -197,6 +267,7 @@ NetWork::~NetWork()
         curl_slist_free_all(this->head);
         curl_easy_cleanup(this->curl);
         curl_global_cleanup();
+        delete response_data;
 }
 
 Conversation::Conversation(const std::string& message,const std::string& key_word)
@@ -427,7 +498,6 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
 {
         int temp;
         char* buffer;
-        std::string current_str;
 
         if (input == "$>exit"){
                 throw "exit";
@@ -437,6 +507,7 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
                 return;
         }else if (input == "$>del"){
                 std::string temp;
+                ds.memory.print_all_key_word();
                 buffer = ic_readline("输入关键字>");
                 temp = buffer;
                 free(buffer);
@@ -455,6 +526,7 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
                 return;
         }else if (input == "$>switch"){
                 std::string key_word;
+                ds.memory.print_all_key_word();
                 buffer = ic_readline("请输入关键字>");
                 key_word = buffer;
                 free(buffer);
@@ -486,10 +558,14 @@ void Parse::parse_and_run(DeepSeek& ds,const std::string& input)
         }
         std::cout << "\033[31m正在思考中\033[0m" << std::endl;
         ds.memory.push_back_message(input,"user");
+        if (ds.thinking_type == "enabled")
+                std::cout << "\033[31m思考过程\033[0m" << std::endl;
         temp = ds.network.send(ds.model,ds.thinking_type,ds.memory.get_current_str());
         if (temp != 0)
                 return;
-        ds.memory.push_back_message(solve_show(),"assistant");
+        std::cout << std::endl;
+        ds.memory.push_back_message(ds.network.response_data->answer,"assistant");
+        ds.network.response_data->answer = "";
 }
 
 DeepSeek::DeepSeek()
@@ -524,32 +600,7 @@ DeepSeek::DeepSeek()
 
 void DeepSeek::input(const std::string& str)
 {
-        rcv_buffer = "";
         this->parse.parse_and_run(*this,str);
-}
-
-static std::string solve_show()
-{
-        cJSON* rcv = cJSON_Parse(rcv_buffer.c_str());
-        cJSON *reasoning,*temp;
-        std::string str;
-
-        temp = rcv;
-        rcv = cJSON_GetObjectItem(rcv,"choices");
-        rcv = cJSON_GetArrayItem(rcv,0);
-        rcv = cJSON_GetObjectItem(rcv,"message");
-        reasoning = cJSON_GetObjectItem(rcv,"reasoning_content");
-        rcv = cJSON_GetObjectItem(rcv,"content");
-        if (cJSON_IsString(reasoning) && reasoning->valuestring)
-                std::cout << "\033[31m思考过程:\033[0m\n" << reasoning->valuestring << std::endl;
-        if (cJSON_IsString(rcv) && rcv->valuestring){
-                std::cout << "\033[31m回答:\033[0m\n" << rcv->valuestring << std::endl;
-                str = rcv->valuestring;
-        }else
-                std::cout << "\033[31m解析json失败\n\033[0m";
-        cJSON_Delete(temp);
-
-        return str;
 }
 
 static std::string read_file(const char* file_path)
@@ -581,7 +632,7 @@ static std::string read_file(const char* file_path)
 
 static size_t call_back(char* data,size_t n,size_t size,void* usr)
 {
-        std::string* p = (std::string*)usr;
+        response* p = (response*)usr;
         p->append(data,n*size);
 
         return n * size;
